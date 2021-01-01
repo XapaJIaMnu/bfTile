@@ -44,28 +44,28 @@ void prepareBtile(__m128i *bmat, __m128i *breord) {
   breord[0] = _mm_mask_blend_epi8 (0xf00, breord[0], bmat[2]);
   breord[0] = _mm_mask_blend_epi8 (0xf000, breord[0], bmat[3]);
 
-  // Column 1 is BLEND + permute. We use float permute as we conveniently need to permute int8s in groups of four and 4int8s are the same width as a float
+  // Column 1 is BLEND + shuffle. We use int32 shuffle as we conveniently need to shuffle int8s in groups of four and 4int8s are the same width as a int32t
   breord[1] = _mm_mask_blend_epi8 (0xf0, bmat[1], bmat[0]);
   breord[1] = _mm_mask_blend_epi8 (0xf00, breord[1], bmat[3]);
   breord[1] = _mm_mask_blend_epi8 (0xf000, breord[1], bmat[2]);
 
-  *reinterpret_cast<__m128*>(&breord[1]) = _mm_permute_ps(*reinterpret_cast<__m128*>(&breord[1]), 0xb1);
+  breord[1] = _mm_shuffle_epi32(breord[1], 0xb1);
 
-  // Column 2 again BLEND + permute
+  // Column 2 again BLEND + shuffle
 
   breord[2] = _mm_mask_blend_epi8 (0xf0, bmat[2], bmat[3]);
   breord[2] = _mm_mask_blend_epi8 (0xf00, breord[2], bmat[1]);
   breord[2] = _mm_mask_blend_epi8 (0xf000, breord[2], bmat[0]);
 
-  *reinterpret_cast<__m128*>(&breord[2]) = _mm_permute_ps(*reinterpret_cast<__m128*>(&breord[2]), 0x4b); //Correct (x, y, z, t) -> (t, z, x, y)
+  breord[2] = _mm_shuffle_epi32(breord[2], 0x4b); //Correct (x, y, z, t) -> (t, z, x, y)
 
-  // Column 3 final BLEND + permute
+  // Column 3 final BLEND + shuffle
 
   breord[3] = _mm_mask_blend_epi8 (0xf0, bmat[3], bmat[2]);
   breord[3] = _mm_mask_blend_epi8 (0xf00, breord[3], bmat[0]);
   breord[3] = _mm_mask_blend_epi8 (0xf000, breord[3], bmat[1]);
 
-  *reinterpret_cast<__m128*>(&breord[3]) = _mm_permute_ps(*reinterpret_cast<__m128*>(&breord[3]), 0x1e); //Correct (x,y,z,t) -> (z, t, y, x)
+  breord[3] = _mm_shuffle_epi32(breord[3], 0x1e); //Correct (x,y,z,t) -> (z, t, y, x)
 }
 
 void multiplyTile(__m128i * amat, __m128i * breord, __m128i * res) {
@@ -84,16 +84,16 @@ void multiplyTile(__m128i * amat, __m128i * breord, __m128i * res) {
     // Multiply 0
     res[i] = _mm_dpbusds_epi32 (res[i], amat[i], breord[0]);
 
-    // Multiply 1: //Permute A in the same way as B was permuted and the multiply
-    *reinterpret_cast<__m128*>(&atmp) = _mm_permute_ps(*reinterpret_cast<__m128*>(&amat[i]), 0xb1);
+    // Multiply 1: //Shuffle A in the same way as B was permuted and the multiply
+    atmp = _mm_shuffle_epi32(amat[i], 0xb1);
     res[i] = _mm_dpbusds_epi32 (res[i], atmp, breord[1]);
 
-    // Multiply 2: //Permute A in the same way as B was permuted and the multiply
-    *reinterpret_cast<__m128*>(&atmp) = _mm_permute_ps(*reinterpret_cast<__m128*>(&amat[i]), 0x4b);
+    // Multiply 2: //Shuffle A in the same way as B was permuted and the multiply
+    atmp = _mm_shuffle_epi32(amat[i], 0x4b);
     res[i] = _mm_dpbusds_epi32 (res[i], atmp, breord[2]);
 
-    // Multiply 3: //Permute A in the same way as B was permuted and the multiply
-    *reinterpret_cast<__m128*>(&atmp) = _mm_permute_ps(*reinterpret_cast<__m128*>(&amat[i]), 0x1e);
+    // Multiply 3: //Shuffle A in the same way as B was permuted and the multiply
+    atmp = _mm_shuffle_epi32(amat[i], 0x1e);
     res[i] = _mm_dpbusds_epi32 (res[i], atmp, breord[3]);
   }
 }
