@@ -39,33 +39,33 @@ void prepareBtile(__m128i *bmat, __m128i *breord) {
   //Assuming at the moment that we are dealing with 4x16 X 16x gemm, as this is just a demo
   //Assume B comes in columnMajor format
 
-  // Column 0 is just BLEND
-  breord[0] = _mm_mask_blend_epi8 (0xf0, bmat[0], bmat[1]);
-  breord[0] = _mm_mask_blend_epi8 (0xf00, breord[0], bmat[2]);
-  breord[0] = _mm_mask_blend_epi8 (0xf000, breord[0], bmat[3]);
+  // Column 0 is just BLEND/ We use int32 blend, as we only are intersted in groups of 4
+  breord[0] = _mm_blend_epi32(bmat[0], bmat[1], 0b0010);
+  breord[0] = _mm_blend_epi32(breord[0], bmat[2], 0b0100);
+  breord[0] = _mm_blend_epi32(breord[0], bmat[3], 0b1000);
 
-  // Column 1 is BLEND + shuffle. We use int32 shuffle as we conveniently need to shuffle int8s in groups of four and 4int8s are the same width as a int32t
-  breord[1] = _mm_mask_blend_epi8 (0xf0, bmat[1], bmat[0]);
-  breord[1] = _mm_mask_blend_epi8 (0xf00, breord[1], bmat[3]);
-  breord[1] = _mm_mask_blend_epi8 (0xf000, breord[1], bmat[2]);
+  // Column 1 is BLEND + shuffle.
+  breord[1] = _mm_blend_epi32(bmat[1], bmat[0], 0b0010);
+  breord[1] = _mm_blend_epi32(breord[1], bmat[3], 0b0100);
+  breord[1] = _mm_blend_epi32(breord[1], bmat[2], 0b1000);
 
-  breord[1] = _mm_shuffle_epi32(breord[1], 0xb1);
+  auto static const constexpr mask1 = _MM_SHUFFLE(2,3,0,1); // it's reversed because of being big endian
+  breord[1] = _mm_shuffle_epi32(breord[1], mask1);  // We use int32 shuffle as we conveniently need to shuffle int8s in groups of four and 4int8s are the same width as a int32t
 
   // Column 2 again BLEND + shuffle
+  breord[2] = _mm_blend_epi32(bmat[2], bmat[3], 0b0010);
+  breord[2] = _mm_blend_epi32(breord[2], bmat[1], 0b0100);
+  breord[2] = _mm_blend_epi32(breord[2], bmat[0], 0b1000);
 
-  breord[2] = _mm_mask_blend_epi8 (0xf0, bmat[2], bmat[3]);
-  breord[2] = _mm_mask_blend_epi8 (0xf00, breord[2], bmat[1]);
-  breord[2] = _mm_mask_blend_epi8 (0xf000, breord[2], bmat[0]);
-
-  breord[2] = _mm_shuffle_epi32(breord[2], 0x4b); //Correct (x, y, z, t) -> (t, z, x, y)
+  auto static const constexpr mask2 = _MM_SHUFFLE(1,0,2,3); // it's reversed because of being big endian
+  breord[2] = _mm_shuffle_epi32(breord[2], mask2);
 
   // Column 3 final BLEND + shuffle
-
-  breord[3] = _mm_mask_blend_epi8 (0xf0, bmat[3], bmat[2]);
-  breord[3] = _mm_mask_blend_epi8 (0xf00, breord[3], bmat[0]);
-  breord[3] = _mm_mask_blend_epi8 (0xf000, breord[3], bmat[1]);
-
-  breord[3] = _mm_shuffle_epi32(breord[3], 0x1e); //Correct (x,y,z,t) -> (z, t, y, x)
+  breord[3] = _mm_blend_epi32(bmat[3], bmat[2], 0b0010);
+  breord[3] = _mm_blend_epi32(breord[3], bmat[0], 0b0100);
+  breord[3] = _mm_blend_epi32(breord[3], bmat[1], 0b1000);
+  auto static const constexpr mask3 = _MM_SHUFFLE(0,1,3,2); // it's reversed because of being big endian
+  breord[3] = _mm_shuffle_epi32(breord[3], mask3);
 }
 
 void multiplyTile(__m128i * amat, __m128i * breord, __m128i * res) {
@@ -85,15 +85,18 @@ void multiplyTile(__m128i * amat, __m128i * breord, __m128i * res) {
     res[i] = _mm_dpbusds_epi32 (res[i], amat[i], breord[0]);
 
     // Multiply 1: //Shuffle A in the same way as B was permuted and the multiply
-    atmp = _mm_shuffle_epi32(amat[i], 0xb1);
+    auto static const constexpr mask1 = _MM_SHUFFLE(2,3,0,1); // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat[i], mask1);
     res[i] = _mm_dpbusds_epi32 (res[i], atmp, breord[1]);
 
     // Multiply 2: //Shuffle A in the same way as B was permuted and the multiply
-    atmp = _mm_shuffle_epi32(amat[i], 0x4b);
+    auto static const constexpr mask2 = _MM_SHUFFLE(1,0,2,3);
+    atmp = _mm_shuffle_epi32(amat[i], mask2);
     res[i] = _mm_dpbusds_epi32 (res[i], atmp, breord[2]);
 
     // Multiply 3: //Shuffle A in the same way as B was permuted and the multiply
-    atmp = _mm_shuffle_epi32(amat[i], 0x1e);
+    auto static const constexpr mask3 = _MM_SHUFFLE(0,1,3,2); // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat[i], mask3);
     res[i] = _mm_dpbusds_epi32 (res[i], atmp, breord[3]);
   }
 }
@@ -121,12 +124,19 @@ int main() {
   printMat(reinterpret_cast<int8_t *>(amat), 4, 16, "A int8");
   printMat(reinterpret_cast<int8_t *>(bmatcolm), 16, 4, "B int8 colM");
 
+  __m128i * breordcolm = reinterpret_cast<__m128i*>(aligned_alloc(16*4*sizeof(int8_t), 1024)); // For easier visualisation
+
   //Sanity check
   gemmRowMColM(reinterpret_cast<int8_t *>(amat), reinterpret_cast<int8_t *>(bmat), 4, 16, 4, reinterpret_cast<int *>(cres));
   printMat(reinterpret_cast<int *>(cres), 4, 4, "A * BcolM SlowMult");
 
   // FUll pipeline test
   prepareBtile(bmat, breord);
+
+  // For visualisation of the reordered format
+  toColMajor(reinterpret_cast<int8_t *>(breord), reinterpret_cast<int8_t *>(breordcolm), 4, 16);
+  printMat(reinterpret_cast<int8_t *>(breordcolm), 16, 4, "B int8 colMreord");
+
   multiplyTile(amat, breord, cres);
   printMat(reinterpret_cast<int32_t *>(&cres[0]), 4, 4, "A * Breord efficient");
 }

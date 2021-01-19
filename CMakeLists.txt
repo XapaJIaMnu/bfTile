@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 2.8.11)
+project(brainfuckTile)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+if(NOT CMAKE_BUILD_TYPE)
+  message(STATUS "CMAKE_BUILD_TYPE not set; setting to Release")
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+message(STATUS "Build type is: ${CMAKE_BUILD_TYPE}")
+
+set(CMAKE_CXX_FLAGS "-march=native -Wall -Wextra -g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_DEBUG "-Og")
+add_executable(demo.out demo.cpp)
