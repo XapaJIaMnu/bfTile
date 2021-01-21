@@ -176,7 +176,7 @@ inline void prepareBtileSubRoutine(__m256i *bmat, __m256i *breord) {
 }
 
 inline void swapLanes(__m256i *input, __m256i *output) {
-  for (int i = 0; i < 8; i++) {                              //@TODO the mask is probably suboptimal since we read from both registers
+  for (int i = 0; i < 8; i++) {
     output[i] = _mm256_permute2x128_si256(input[i], input[i], 0b0101); // Technically we use only one input but this seems to work
   }
 }
@@ -332,7 +332,7 @@ inline void prepareBtileSubRoutine(__m512i *bmat, __m512i *breord) {
   auto static const constexpr mask3 = (_MM_PERM_ENUM)_MM_SHUFFLE(0,1,3,2); // it's reversed because of being big endian. Masks on avx512 work differently too
   breord[3] = _mm512_shuffle_epi32(breord[3], mask3);
 }
-template<int imm>
+template<int imm> // imm needs to be a compile time constant, hence templates
 inline void swapLanes(__m512i *input, __m512i *output) {
   for (int i = 0; i < 16; i++) {
     output[i] = _mm512_shuffle_i32x4(input[i], input[i], imm); // Technically we use only one input but this seems to work
