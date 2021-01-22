@@ -26,10 +26,8 @@ void printMat(intType * a, size_t rows, size_t cols, std::string name, int digit
       int numbah = (int)a[i*cols + j];
       // Pad for nice printing
       int mydigits = digits - numDigits(numbah);
-      if (mydigits > 0) {
-        for (int t = 0; t < mydigits; t++) {
-          std::cerr << ' ';
-        }
+      for (int t = 0; t < mydigits; t++) {
+        std::cerr << ' ';
       }
       std::cerr << numbah << " ";
     }
