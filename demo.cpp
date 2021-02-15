@@ -123,6 +123,63 @@ void multiplyTile(__m128i * amat, __m128i * breord, __m128i * res) {
   }
 }
 
+/* The above function doesn't take into account the latency of dpbusds, which is most definitely more than one cycle.
+   We need to reorder the operations in such a manner that there are no consecutive write dependecies*/
+void multiplyTileEff(__m128i * amat, __m128i * breord, __m128i * res) {
+  __m128i atmp; // Temporary register for reodering A
+
+  // We could potentially hold the whole tile in registers, since we don't require that many by statically unrolling this loop
+  // The advantage of this method is that we should have extreme memory locality and cache locality. While A is indeed manipulated
+  // on the fly, it is kept in registers which should make the operation crazy fast.
+  // B is accessed consecutively and the whole tile could be kept into registers if we unroll the loop
+  // C is accessed one register at a time and consecutively. No expensive scatter instructions
+  // Set 0
+  for (int i = 0; i < 4; i++) {
+    res[i] = _mm_set1_epi32(0);
+  }
+
+  {
+    // Multiply 0
+    res[0] = _mm_dpbusds_epi32(res[0], amat[0], breord[0]);
+    res[1] = _mm_dpbusds_epi32(res[1], amat[1], breord[0]);
+    res[2] = _mm_dpbusds_epi32(res[2], amat[2], breord[0]);
+    res[3] = _mm_dpbusds_epi32(res[3], amat[3], breord[0]);
+
+    // Multiply 1: //Shuffle A in the same way as B was permuted and the multiply
+    auto static const constexpr mask1 = _MM_SHUFFLE(2,3,0,1); // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat[0], mask1);
+    res[0] = _mm_dpbusds_epi32(res[0], atmp, breord[1]);
+    atmp = _mm_shuffle_epi32(amat[1], mask1);
+    res[1] = _mm_dpbusds_epi32(res[1], atmp, breord[1]);
+    atmp = _mm_shuffle_epi32(amat[2], mask1);
+    res[2] = _mm_dpbusds_epi32(res[2], atmp, breord[1]);
+    atmp = _mm_shuffle_epi32(amat[3], mask1);
+    res[3] = _mm_dpbusds_epi32(res[3], atmp, breord[1]);
+
+    // Multiply 2: //Shuffle A in the same way as B was permuted and the multiply
+    auto static const constexpr mask2 = _MM_SHUFFLE(1,0,2,3);
+    atmp = _mm_shuffle_epi32(amat[0], mask2);
+    res[0] = _mm_dpbusds_epi32(res[0], atmp, breord[2]);
+    atmp = _mm_shuffle_epi32(amat[1], mask2);
+    res[1] = _mm_dpbusds_epi32(res[1], atmp, breord[2]);
+    atmp = _mm_shuffle_epi32(amat[2], mask2);
+    res[2] = _mm_dpbusds_epi32(res[2], atmp, breord[2]);
+    atmp = _mm_shuffle_epi32(amat[3], mask2);
+    res[3] = _mm_dpbusds_epi32(res[3], atmp, breord[2]);
+
+    // Multiply 3: //Shuffle A in the same way as B was permuted and the multiply
+    auto static const constexpr mask3 = _MM_SHUFFLE(0,1,3,2); // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat[0], mask3);
+    res[0] = _mm_dpbusds_epi32(res[0], atmp, breord[3]);
+    atmp = _mm_shuffle_epi32(amat[1], mask3);
+    res[1] = _mm_dpbusds_epi32(res[1], atmp, breord[3]);
+    atmp = _mm_shuffle_epi32(amat[2], mask3);
+    res[2] = _mm_dpbusds_epi32(res[2], atmp, breord[3]);
+    atmp = _mm_shuffle_epi32(amat[3], mask3);
+    res[3] = _mm_dpbusds_epi32(res[3], atmp, breord[3]);
+  }
+}
+
 /************************************************************************************ mm256 code ************************************************************************************/
 
 inline void prepareBtileSubRoutine(__m256i *bmat, __m256i *breord) {
@@ -466,6 +523,7 @@ void mm128Example() {
   __m128i * bmat = reinterpret_cast<__m128i*>(aligned_alloc(16*4*sizeof(int8_t), 1024));
   __m128i * cslow = reinterpret_cast<__m128i*>(aligned_alloc(4*4*sizeof(int32_t), 1024));
   __m128i * cres = reinterpret_cast<__m128i*>(aligned_alloc(4*4*sizeof(int32_t), 1024));
+  __m128i * cresEff = reinterpret_cast<__m128i*>(aligned_alloc(4*4*sizeof(int32_t), 1024));
   __m128i * breord = reinterpret_cast<__m128i*>(aligned_alloc(16*4*sizeof(int8_t), 1024));
 
   // Populate
@@ -497,12 +555,16 @@ void mm128Example() {
   printMat(reinterpret_cast<int8_t *>(breordcolm), 16, 4, "B int8 colMreord", 2);
 
   multiplyTile(amat, breord, cres);
+  multiplyTileEff(amat, breord, cresEff);
   printMat(reinterpret_cast<int *>(cslow), 4, 4, "A * BcolM SlowMult", 5);
   printMat(reinterpret_cast<int32_t *>(&cres[0]), 4, 4, "A * Breord efficient", 5);
 
   //Compare the memory
   if (std::memcmp(cslow, cres, 4*4*sizeof(int32_t))) {
     std::cerr << "mm128 fast and slow gemm implementations differ" << std::endl;
+  }
+  if (std::memcmp(cslow, cresEff, 4*4*sizeof(int32_t))) {
+    std::cerr << "mm128 fastEfficient and slow gemm implementations differ" << std::endl;
   }
 }
 
