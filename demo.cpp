@@ -222,63 +222,58 @@ inline void multiplyTileEff(const __m128i *amat0, const __m128i *amat1, const __
   // on the fly, it is kept in registers which should make the operation crazy fast.
   // B is accessed consecutively and the whole tile could be kept into registers if we unroll the loop
   // C is accessed one register at a time and consecutively. No expensive scatter instructions
-  // Set 0
-    *res0 = _mm_set1_epi32(0);
-    *res1 = _mm_set1_epi32(0);
-    *res2 = _mm_set1_epi32(0);
-    *res3 = _mm_set1_epi32(0);
-  {
-    // Multiply 0
-    *res0 = _mm_dpbusds_epi32(*res0, *amat0, breord[0]);
-    *res1 = _mm_dpbusds_epi32(*res1, *amat1, breord[0]);
-    *res2 = _mm_dpbusds_epi32(*res2, *amat2, breord[0]);
-    *res3 = _mm_dpbusds_epi32(*res3, *amat3, breord[0]);
 
-    // Multiply 1: //Shuffle A in the same way as B was permuted and the multiply
-    auto static const constexpr mask1 = _MM_SHUFFLE(2,3,0,1); // it's reversed because of being big endian
-    atmp = _mm_shuffle_epi32(*amat0, mask1);
-    *res0 = _mm_dpbusds_epi32(*res0, atmp, breord[1]);
-    atmp = _mm_shuffle_epi32(*amat1, mask1);
-    *res1 = _mm_dpbusds_epi32(*res1, atmp, breord[1]);
-    atmp = _mm_shuffle_epi32(*amat2, mask1);
-    *res2 = _mm_dpbusds_epi32(*res2, atmp, breord[1]);
-    atmp = _mm_shuffle_epi32(*amat3, mask1);
-    *res3 = _mm_dpbusds_epi32(*res3, atmp, breord[1]);
+  // Multiply 0
+  *res0 = _mm_dpbusds_epi32(*res0, *amat0, breord[0]);
+  *res1 = _mm_dpbusds_epi32(*res1, *amat1, breord[0]);
+  *res2 = _mm_dpbusds_epi32(*res2, *amat2, breord[0]);
+  *res3 = _mm_dpbusds_epi32(*res3, *amat3, breord[0]);
 
-    // Multiply 2: //Shuffle A in the same way as B was permuted and the multiply
-    auto static const constexpr mask2 = _MM_SHUFFLE(1,0,2,3);
-    atmp = _mm_shuffle_epi32(*amat0, mask2);
-    *res0 = _mm_dpbusds_epi32(*res0, atmp, breord[2]);
-    atmp = _mm_shuffle_epi32(*amat1, mask2);
-    *res1 = _mm_dpbusds_epi32(*res1, atmp, breord[2]);
-    atmp = _mm_shuffle_epi32(*amat2, mask2);
-    *res2 = _mm_dpbusds_epi32(*res2, atmp, breord[2]);
-    atmp = _mm_shuffle_epi32(*amat3, mask2);
-    *res3 = _mm_dpbusds_epi32(*res3, atmp, breord[2]);
+  // Multiply 1: //Shuffle A in the same way as B was permuted and the multiply
+  auto static const constexpr mask1 = _MM_SHUFFLE(2,3,0,1); // it's reversed because of being big endian
+  atmp = _mm_shuffle_epi32(*amat0, mask1);
+  *res0 = _mm_dpbusds_epi32(*res0, atmp, breord[1]);
+  atmp = _mm_shuffle_epi32(*amat1, mask1);
+  *res1 = _mm_dpbusds_epi32(*res1, atmp, breord[1]);
+  atmp = _mm_shuffle_epi32(*amat2, mask1);
+  *res2 = _mm_dpbusds_epi32(*res2, atmp, breord[1]);
+  atmp = _mm_shuffle_epi32(*amat3, mask1);
+  *res3 = _mm_dpbusds_epi32(*res3, atmp, breord[1]);
 
-    // Multiply 3: //Shuffle A in the same way as B was permuted and the multiply
-    auto static const constexpr mask3 = _MM_SHUFFLE(0,1,3,2); // it's reversed because of being big endian
-    atmp = _mm_shuffle_epi32(*amat0, mask3);
-    *res0 = _mm_dpbusds_epi32(*res0, atmp, breord[3]);
-    atmp = _mm_shuffle_epi32(*amat1, mask3);
-    *res1 = _mm_dpbusds_epi32(*res1, atmp, breord[3]);
-    atmp = _mm_shuffle_epi32(*amat2, mask3);
-    *res2 = _mm_dpbusds_epi32(*res2, atmp, breord[3]);
-    atmp = _mm_shuffle_epi32(*amat3, mask3);
-    *res3 = _mm_dpbusds_epi32(*res3, atmp, breord[3]);
-  }
+  // Multiply 2: //Shuffle A in the same way as B was permuted and the multiply
+  auto static const constexpr mask2 = _MM_SHUFFLE(1,0,2,3);
+  atmp = _mm_shuffle_epi32(*amat0, mask2);
+  *res0 = _mm_dpbusds_epi32(*res0, atmp, breord[2]);
+  atmp = _mm_shuffle_epi32(*amat1, mask2);
+  *res1 = _mm_dpbusds_epi32(*res1, atmp, breord[2]);
+  atmp = _mm_shuffle_epi32(*amat2, mask2);
+  *res2 = _mm_dpbusds_epi32(*res2, atmp, breord[2]);
+  atmp = _mm_shuffle_epi32(*amat3, mask2);
+  *res3 = _mm_dpbusds_epi32(*res3, atmp, breord[2]);
+
+  // Multiply 3: //Shuffle A in the same way as B was permuted and the multiply
+  auto static const constexpr mask3 = _MM_SHUFFLE(0,1,3,2); // it's reversed because of being big endian
+  atmp = _mm_shuffle_epi32(*amat0, mask3);
+  *res0 = _mm_dpbusds_epi32(*res0, atmp, breord[3]);
+  atmp = _mm_shuffle_epi32(*amat1, mask3);
+  *res1 = _mm_dpbusds_epi32(*res1, atmp, breord[3]);
+  atmp = _mm_shuffle_epi32(*amat2, mask3);
+  *res2 = _mm_dpbusds_epi32(*res2, atmp, breord[3]);
+  atmp = _mm_shuffle_epi32(*amat3, mask3);
+  *res3 = _mm_dpbusds_epi32(*res3, atmp, breord[3]);
 }
 
 void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
-
+  /****** Important: C is assumed to be set to 0 ******/
   size_t offsetA = 0; //Offset of A, as we are reading first 4 elements from each row. This is for when width > tile size
   size_t offsetC = 0;
+  const __m128i * breord = reinterpret_cast<const __m128i *>(B);
   for (size_t t = 0; t < width; t += 16) {
     offsetA += t;
     offsetC = 0; // Reset every time we go to a new width sub-section
     for (size_t j = 0; j < colsB; j += 4) { //We do 4 columns of B at a time
       // Loop over rows of A, going to use the same tile of B
-      const __m128i * breord = reinterpret_cast<const __m128i *>(B+(16*j)); // tiles always come in 4 columns
+      const __m128i * breord_cur = breord + j; // tiles always come in 4 columns
       offsetC += j; //Offset of C, as we are writing 4 elements at a time
       for (size_t i = 0; i < rowsA; i += 4) {
         const __m128i * amat0 = reinterpret_cast<const __m128i *>(A + i*width + offsetA);
@@ -286,15 +281,15 @@ void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t
         const __m128i * amat2 = reinterpret_cast<const __m128i *>(A + (i+2)*width + offsetA);
         const __m128i * amat3 = reinterpret_cast<const __m128i *>(A + (i+3)*width + offsetA);
 
-
         __m128i * cres0 = reinterpret_cast<__m128i *>(C + i*colsB + offsetC);
         __m128i * cres1 = reinterpret_cast<__m128i *>(C + (i+1)*colsB + offsetC);
         __m128i * cres2 = reinterpret_cast<__m128i *>(C + (i+2)*colsB + offsetC);
         __m128i * cres3 = reinterpret_cast<__m128i *>(C + (i+3)*colsB + offsetC);
-        multiplyTileEff(amat0, amat1, amat2, amat3, breord, 
+        multiplyTileEff(amat0, amat1, amat2, amat3, breord_cur, 
                         cres0, cres1, cres2, cres3);
       }
     }
+    breord = breord + colsB; // Our B reordered matrix goes over the colums first and rows later
   }
 }
 
@@ -780,7 +775,7 @@ void mm512Example() {
   }
 }
 
-void mm128GEMMExample(size_t aRows = 8, size_t width = 16, size_t bCols = 4) {
+void mm128GEMMExample(size_t aRows = 8, size_t width = 16, size_t bCols = 4, bool toprint=false) {
   AlignedVector<uint8_t> A(aRows*width);
   AlignedVector<int8_t> B(width*bCols);
   AlignedVector<int8_t> BColM(width*bCols);
@@ -790,10 +785,10 @@ void mm128GEMMExample(size_t aRows = 8, size_t width = 16, size_t bCols = 4) {
   AlignedVector<int32_t> Cfast(aRows*bCols);
 
   for (size_t i = 0; i < aRows*width; i++) {
-    A[i] = i;
+    A[i] = i % 255;
   }
   for (size_t i = 0; i < width*bCols; i++) {
-    B[i] = i;
+    B[i] = i % 255;
   }
   for (auto&& item : Cslow) {
     item = 0;
@@ -804,28 +799,30 @@ void mm128GEMMExample(size_t aRows = 8, size_t width = 16, size_t bCols = 4) {
 
   // Prepare datapoints
   toColMajor(B.begin(), BColM.begin(), bCols, width); // This is just for printing
-  printMat(A.begin(), aRows, width, "A int8", 3);
-  printMat(BColM.begin(), width, bCols, "B int8 colM", 3);
 
   prepareBMatrix(B.begin(), BReord.begin(), width, bCols);
-  //prepareBtile(reinterpret_cast<__m128i *>(B.begin()), reinterpret_cast<__m128i *>(BReord.begin()));
 
   //Sanity check
   gemmRowMColM(A.begin(), B.begin(), aRows, width, bCols, Cslow.begin());
 
-
   // For visualisation of the reordered format
   toColMajor(BReord.begin(), BReordColM.begin(), bCols, width);
-  //toColMajor(BReord.begin(), BReordColM.begin(), 8, 16);
-  printMat(BReordColM.begin(), width, bCols, "B int8 colM", 3);
-  //printMat(BReordColM.begin(), 16, 8, "B int8 colM FAKE", 3);
-  printMat(Cslow.begin(), aRows, bCols, "A * BcolM SlowMult", 6);
 
   gemm(A.begin(), BReord.begin(), Cfast.begin(), aRows, width, bCols);
-  printMat(Cfast.begin(), aRows, bCols, "A * BcolM fast", 6);
 
+  bool wrong = false;
   if (std::memcmp(Cfast.begin(), Cslow.begin(), aRows*bCols*sizeof(int32_t))) {
-    std::cerr << "Actual fast and slow gemm implementations differ" << std::endl;
+    wrong = true;
+  }
+  if (wrong || toprint) {
+    printMat(A.begin(), aRows, width, "A int8", 3);
+    printMat(BColM.begin(), width, bCols, "B int8 colM", 4);
+    printMat(BReordColM.begin(), width, bCols, "B int8 colM", 4);
+    printMat(Cslow.begin(), aRows, bCols, "A * BcolM SlowMult", 8);
+    printMat(Cfast.begin(), aRows, bCols, "A * BcolM fast", 8);
+    if (wrong) {
+      std::cerr << "Actual fast and slow gemm implementations differ" << std::endl;
+    }
   }
 }
 
@@ -835,5 +832,8 @@ int main() {
   //mm512Example();
   mm128GEMMExample();
   mm128GEMMExample(8, 16, 8);
+  mm128GEMMExample(4, 16, 4);
   mm128GEMMExample(4, 32, 4);
+  mm128GEMMExample(8, 32, 8);
+  mm128GEMMExample(64, 32, 32);
 }
