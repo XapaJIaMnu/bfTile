@@ -265,26 +265,22 @@ inline void multiplyTileEff(const __m128i *amat0, const __m128i *amat1, const __
 
 void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
   /****** Important: C is assumed to be set to 0 ******/
-  size_t offsetA = 0; //Offset of A, as we are reading first 4 elements from each row. This is for when width > tile size
-  size_t offsetC = 0;
   const __m128i * breord = reinterpret_cast<const __m128i *>(B);
   for (size_t t = 0; t < width; t += 16) {
-    offsetA += t;
-    offsetC = 0; // Reset every time we go to a new width sub-section
-    for (size_t j = 0; j < colsB; j += 4) { //We do 4 columns of B at a time
-      // Loop over rows of A, going to use the same tile of B
+    // t is used to iterate over columns of A (A is iterated top to bottom one (sizeof(__m128i)) at a time))
+    for (size_t j = 0; j < colsB; j += 4) {
+      // Loop breadth first of B, depth first of C. We write C one column (sizeof(__m128i)) at a time
       const __m128i * breord_cur = breord + j; // tiles always come in 4 columns
-      offsetC += j; //Offset of C, as we are writing 4 elements at a time
       for (size_t i = 0; i < rowsA; i += 4) {
-        const __m128i * amat0 = reinterpret_cast<const __m128i *>(A + i*width + offsetA);
-        const __m128i * amat1 = reinterpret_cast<const __m128i *>(A + (i+1)*width + offsetA);
-        const __m128i * amat2 = reinterpret_cast<const __m128i *>(A + (i+2)*width + offsetA);
-        const __m128i * amat3 = reinterpret_cast<const __m128i *>(A + (i+3)*width + offsetA);
-
-        __m128i * cres0 = reinterpret_cast<__m128i *>(C + i*colsB + offsetC);
-        __m128i * cres1 = reinterpret_cast<__m128i *>(C + (i+1)*colsB + offsetC);
-        __m128i * cres2 = reinterpret_cast<__m128i *>(C + (i+2)*colsB + offsetC);
-        __m128i * cres3 = reinterpret_cast<__m128i *>(C + (i+3)*colsB + offsetC);
+        // Loop over rows of A, going to use the same tile of B
+        const __m128i * amat0 = reinterpret_cast<const __m128i *>(A + i*width + t);
+        const __m128i * amat1 = reinterpret_cast<const __m128i *>(A + (i+1)*width + t);
+        const __m128i * amat2 = reinterpret_cast<const __m128i *>(A + (i+2)*width + t);
+        const __m128i * amat3 = reinterpret_cast<const __m128i *>(A + (i+3)*width + t);
+        __m128i * cres0 = reinterpret_cast<__m128i *>(C + i*colsB + j);
+        __m128i * cres1 = reinterpret_cast<__m128i *>(C + (i+1)*colsB + j);
+        __m128i * cres2 = reinterpret_cast<__m128i *>(C + (i+2)*colsB + j);
+        __m128i * cres3 = reinterpret_cast<__m128i *>(C + (i+3)*colsB + j);
         multiplyTileEff(amat0, amat1, amat2, amat3, breord_cur, 
                         cres0, cres1, cres2, cres3);
       }
@@ -836,4 +832,11 @@ int main() {
   mm128GEMMExample(4, 32, 4);
   mm128GEMMExample(8, 32, 8);
   mm128GEMMExample(64, 32, 32);
+  mm128GEMMExample(4, 16, 8);
+  mm128GEMMExample(4, 16, 12);
+  mm128GEMMExample(640, 32, 32);
+  mm128GEMMExample(4, 48, 4);
+  mm128GEMMExample(640, 320, 32);
+  mm128GEMMExample(640, 320, 320);
+  //mm128GEMMExample(640, 320, 320);
 }
