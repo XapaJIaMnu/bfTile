@@ -271,6 +271,8 @@ void benchmark128(size_t times=100) {
   double time_rows = 0;
   double time_width = 0;
   double time_width_addr = 0;
+  double time_width_addr_loop = 0;
+  double time_width_addr_loop_tile_loop = 0;
   bftile::matrix matrices[11] = {{8, 64, 8},
                                  {8, 256, 256},
                                  {8, 2048, 256},
@@ -287,12 +289,15 @@ void benchmark128(size_t times=100) {
       time_rows += gemmBenchmark<bftile::breadthfirst::runner>(matrix);
       time_width += gemmBenchmark<bftile::depthfirst::runner>(matrix);
       time_width_addr += gemmBenchmark<bftile::depthfirstaddr::runner>(matrix);
+      time_width_addr_loop += gemmBenchmark<bftile::depthfirstaddrloop::runner>(matrix);
+      time_width_addr_loop_tile_loop += gemmBenchmark<bftile::depthfirstaddrlooptileloop::runner>(matrix);
     }
   }
   std::cerr << "Iteration over rows-of-a took: " << time_rows << " seconds." << std::endl;
   std::cerr << "Iteration over width took: " << time_width << " seconds." << std::endl;
   std::cerr << "Iteration over width with addresses took: " << time_width_addr << " seconds." << std::endl;
-
+  std::cerr << "Iteration over width with addresses assigned via for loop took: " << time_width_addr_loop << " seconds." << std::endl;
+  std::cerr << "Iteration over width with addresses assigned via for loop, for loop tile took: " << time_width_addr_loop_tile_loop << " seconds." << std::endl;
 }
 
 int main() {
@@ -317,6 +322,8 @@ int main() {
     mm128GEMMTest<bftile::breadthfirst::runner>(matrix);
     mm128GEMMTest<bftile::depthfirst::runner>(matrix);
     mm128GEMMTest<bftile::depthfirstaddr::runner>(matrix);
+    mm128GEMMTest<bftile::depthfirstaddrloop::runner>(matrix);
+    mm128GEMMTest<bftile::depthfirstaddrlooptileloop::runner>(matrix);
   }
   benchmark128(10);
 }

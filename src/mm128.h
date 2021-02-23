@@ -252,7 +252,7 @@ struct breadthfirst {
     }
   }
 
-  static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
+  __attribute__((flatten)) static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
     /****** Important: C is assumed to be set to 0 ******/
     static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
     static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
@@ -309,7 +309,7 @@ struct depthfirst {
     }
   }
 
-  static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
+  __attribute__((flatten)) static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
     /****** Important: C is assumed to be set to 0 ******/
     static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
     static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
@@ -346,7 +346,7 @@ struct depthfirst {
 }; //struct depthfirst
 
 struct depthfirstaddr {
-  static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
+  __attribute__((flatten)) static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
     /****** Important: C is assumed to be set to 0 ******/
     static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
     static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
@@ -380,5 +380,122 @@ struct depthfirstaddr {
     using prepareB = bftile::depthfirst;
   };
 }; //struct depthfirstaddr
+
+struct depthfirstaddrlooptileloop {
+
+  static inline void zeroLoop(__m128i& res, const __m128i& amat, const __m128i& breord) {
+    res = _mm_dpbusds_epi32(res, amat, breord);
+  }
+
+  static inline void oneLoop(__m128i& res, const __m128i& amat, const __m128i& breord, __m128i& atmp) {
+    auto static const constexpr mask1 = _MM_SHUFFLE(2,3,0,1); // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat, mask1);
+    res = _mm_dpbusds_epi32(res, atmp, breord);
+  }
+
+  static inline void twoLoop(__m128i& res, const __m128i& amat, const __m128i& breord, __m128i& atmp) {
+    auto static const constexpr mask2 = _MM_SHUFFLE(1,0,2,3); // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat, mask2);
+    res = _mm_dpbusds_epi32(res, atmp, breord);
+  }
+
+  static inline void threeLoop(__m128i& res, const __m128i& amat, const __m128i& breord, __m128i& atmp) {
+    auto static const constexpr mask3 = _MM_SHUFFLE(0,1,3,2);  // it's reversed because of being big endian
+    atmp = _mm_shuffle_epi32(amat, mask3);
+    res = _mm_dpbusds_epi32(res, atmp, breord);
+  }
+
+  __attribute__((flatten)) static inline void multiplyTileEffAddrLoop(const __m128i **amat, const __m128i * breord, __m128i **res) {
+    __m128i atmp; // Temporary register for reodering A
+
+    // We could potentially hold the whole tile in registers, since we don't require that many by statically unrolling this loop
+    // The advantage of this method is that we should have extreme memory locality and cache locality. While A is indeed manipulated
+    // on the fly, it is kept in registers which should make the operation crazy fast.
+    // B is accessed consecutively and the whole tile could be kept into registers if we unroll the loop
+    // C is accessed one register at a time and consecutively. No expensive scatter instructions
+
+    // Multiply 0
+    for (int i = 0; i<4; i++) {
+      zeroLoop(*res[i], *amat[i], breord[0]);
+    }    
+
+    // Multiply 1: //Shuffle A in the same way as B was permuted and the multiply
+    for (int i = 0; i<4; i++) {
+      oneLoop(*res[i], *amat[i], breord[1], atmp);
+    }
+
+    // Multiply 2: //Shuffle A in the same way as B was permuted and the multiply
+    for (int i = 0; i<4; i++) {
+      twoLoop(*res[i], *amat[i], breord[2], atmp);
+    }
+
+    // Multiply 3: //Shuffle A in the same way as B was permuted and the multiply
+    for (int i = 0; i<4; i++) {
+      threeLoop(*res[i], *amat[i], breord[3], atmp);
+    }
+  }
+
+  __attribute__((flatten)) static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
+    /****** Important: C is assumed to be set to 0 ******/
+    static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
+    static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
+    const __m128i * breord = reinterpret_cast<const __m128i *>(B);
+    const __m128i * amat[numregs];
+    __m128i * cres[numregs];
+    // t is used to iterate over columns of A (A is left to right (sizeof(__m128i)) at a time))
+    for (size_t j = 0; j < colsB; j += numregs) { // 16/4=4
+      // Loop breadth first of B, depth first of C. We write C one column (sizeof(__m128i)) at a time
+      for (size_t i = 0; i < rowsA; i += numregs) { // 16/4=4
+        const __m128i *  breord_cur = breord;
+        for (size_t t = 0; t < width; t += regwidth) { // Loop over the width so we only ever write to a set of 4 consecutive registers
+          // Loop over rows of A, going to use the same tile of B
+          for (size_t n = 0; n < numregs; n++) { // Read in from the memory @TODO kpu unordered_unfurl? Could also use pragma unroll but it's compiler dependent...
+            amat[n] = reinterpret_cast<const __m128i *>(A + (i+n)*width + t);
+            cres[n] = reinterpret_cast<__m128i *>(C + (i+n)*colsB + j);
+          }
+          multiplyTileEffAddrLoop(amat, breord_cur, cres);
+          breord_cur = breord_cur + numregs; // 16/4=4
+        }
+      }
+      breord = breord + width/numregs; // Our B reordered matrix goes over the colums first and rows later. Divided by 4 since we use 4 registers
+    }
+  }
+  struct runner {
+    using gemm = bftile::depthfirstaddrlooptileloop;
+    using prepareB = bftile::depthfirst;
+  };
+}; //struct depthfirstaddrlooptileloop
+
+struct depthfirstaddrloop {
+  __attribute__((flatten)) static void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
+    /****** Important: C is assumed to be set to 0 ******/
+    static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
+    static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
+    const __m128i * breord = reinterpret_cast<const __m128i *>(B);
+    const __m128i * amat[numregs];
+    __m128i * cres[numregs];
+    // t is used to iterate over columns of A (A is left to right (sizeof(__m128i)) at a time))
+    for (size_t j = 0; j < colsB; j += numregs) { // 16/4=4
+      // Loop breadth first of B, depth first of C. We write C one column (sizeof(__m128i)) at a time
+      for (size_t i = 0; i < rowsA; i += numregs) { // 16/4=4
+        const __m128i *  breord_cur = breord;
+        for (size_t t = 0; t < width; t += regwidth) { // Loop over the width so we only ever write to a set of 4 consecutive registers
+          // Loop over rows of A, going to use the same tile of B
+          for (size_t n = 0; n < numregs; n++) { // Read in from the memory @TODO kpu unordered_unfurl? Could also use pragma unroll but it's compiler dependent...
+            amat[n] = reinterpret_cast<const __m128i *>(A + (i+n)*width + t);
+            cres[n] = reinterpret_cast<__m128i *>(C + (i+n)*colsB + j);
+          }
+          multiplyTileEffAddr(amat, breord_cur, cres);
+          breord_cur = breord_cur + numregs; // 16/4=4
+        }
+      }
+      breord = breord + width/numregs; // Our B reordered matrix goes over the colums first and rows later. Divided by 4 since we use 4 registers
+    }
+  }
+  struct runner {
+    using gemm = bftile::depthfirstaddrloop;
+    using prepareB = bftile::depthfirst;
+  };
+}; //struct depthfirstaddrloop
 
 } // namespace bftile
