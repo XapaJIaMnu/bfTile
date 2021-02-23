@@ -332,5 +332,5 @@ int main() {
   mm128GEMMDepthFirstExample(72, 320, 144);
 
   //mm128GEMMExample(640, 320, 320);
-  benchmark128();
+  benchmark128(10);
 }

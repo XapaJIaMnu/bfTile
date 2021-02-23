@@ -37,20 +37,24 @@ void prepareBtile(__m128i *bmat, __m128i *breord) {
   breord[3] = _mm_shuffle_epi32(breord[3], mask3);
 }
 
+// Our width is constrainted to be multiple of (sizeof(Register)) and the other sides of the matrices need to be
+// multiple of (sizeof(Register))/4
 void prepareBMatrix(const int8_t * in, int8_t * out, size_t rowsB, size_t colsB) {
   // We traverse the width first then the depth
+  static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
+  static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
   __m128i* outmat = reinterpret_cast<__m128i*>(out);
-  __m128i intile[4];
+  __m128i intile[numregs];
   size_t offset = 0;
-  for (size_t j = 0; j < rowsB; j += 16) {
+  for (size_t j = 0; j < rowsB; j += regwidth) {
     offset += j;
-    for (size_t i = 0; i < colsB; i += 4) {  // Our tile size is 64
-      for (size_t t = 0; t < 4; t++) { // Copy a subpart of the matrix onto a tile. @TODO optimise, do away with the copy
-        std::memcpy(&intile[t], &in[offset], sizeof(__m128i));
+    for (size_t i = 0; i < colsB; i += numregs) {  // Our tile size is 64
+      for (size_t t = 0; t < numregs; t++) { // Copy a subpart of the matrix onto a tile. @TODO optimise, do away with the copy
+        std::memcpy(&intile[t], &in[offset], regwidth);
         offset += rowsB; // B comes in as a column major already so to go to the next column we need to += one column
       }
       prepareBtile(intile, outmat);
-      outmat = outmat + 4; // Advance the pointer of the output reorder matrix by 4x__m128i
+      outmat = outmat + numregs; // Advance the pointer of the output reorder matrix by 4x__m128i
     }
     offset = 0;
   }
@@ -58,18 +62,20 @@ void prepareBMatrix(const int8_t * in, int8_t * out, size_t rowsB, size_t colsB)
 
 void prepareBMatrixDepthFirst(const int8_t * in, int8_t * out, size_t rowsB, size_t colsB) {
   // We traverse the matrix depth first, 4 columns at a time
+  static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
+  static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
   __m128i* outmat = reinterpret_cast<__m128i*>(out);
-  __m128i intile[4];
-  for (size_t i = 0; i < colsB; i += 4) {  // Our tile size is 64
+  __m128i intile[numregs];
+  for (size_t i = 0; i < colsB; i += numregs ) {  // Our tile size is 64, 4*16. We read it 4 columns at a time (sizeof(__m128i)/4 = 4)
     size_t column_start = i*rowsB; // We go 4 further 4 columns to the right
-    for (size_t j = 0; j < rowsB; j += 16) { // We go 16 rows down at a time
+    for (size_t j = 0; j < rowsB; j += regwidth) { // We go 16 rows down at a time. 16 is what fits in one register
       size_t offset = column_start + j;
-      for (size_t t = 0; t < 4; t++) { // Copy a subpart of the matrix onto a tile. @TODO optimise, do away with the copy
-        std::memcpy(&intile[t], &in[offset], sizeof(__m128i));
+      for (size_t t = 0; t < numregs; t++) { // Copy a subpart of the matrix onto a tile. @TODO optimise, do away with the copy
+        std::memcpy(&intile[t], &in[offset], regwidth);
         offset += rowsB; // B comes in as a column major already so to go to the next column we need to += one column
       }
       prepareBtile(intile, outmat);
-      outmat = outmat + 4; // Advance the pointer of the output reorder matrix by 4x__m128i
+      outmat = outmat + numregs; // Advance the pointer of the output reorder matrix by 4x__m128i
     }
   }
 }
@@ -218,13 +224,15 @@ inline void multiplyTileEff(const __m128i *amat0, const __m128i *amat1, const __
 
 void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
   /****** Important: C is assumed to be set to 0 ******/
+  static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
+  static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
   const __m128i * breord = reinterpret_cast<const __m128i *>(B);
-  for (size_t t = 0; t < width; t += 16) {
+  for (size_t t = 0; t < width; t += regwidth) {
     // t is used to iterate over columns of A (A is iterated top to bottom one (sizeof(__m128i)) at a time))
-    for (size_t j = 0; j < colsB; j += 4) {
+    for (size_t j = 0; j < colsB; j += numregs ) {
       // Loop breadth first of B, depth first of C. We write C one column (sizeof(__m128i)) at a time
       const __m128i * breord_cur = breord + j; // tiles always come in 4 columns
-      for (size_t i = 0; i < rowsA; i += 4) {
+      for (size_t i = 0; i < rowsA; i += numregs ) {
         // Loop over rows of A, going to use the same tile of B
         const __m128i * amat0 = reinterpret_cast<const __m128i *>(A + i*width + t);
         const __m128i * amat1 = reinterpret_cast<const __m128i *>(A + (i+1)*width + t);
@@ -244,14 +252,15 @@ void gemm(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t
 
 void gemmDepthFirst(const uint8_t * A, const int8_t * B, int32_t * C, size_t rowsA, size_t width, size_t colsB) {
   /****** Important: C is assumed to be set to 0 ******/
+  static const constexpr size_t regwidth = sizeof(__m128i); // We have two types of increments: incrementing by regwidth elements
+  static const constexpr size_t numregs = sizeof(__m128i)/4; // and increments by the number of registers of B that make up a single tile
   const __m128i * breord = reinterpret_cast<const __m128i *>(B);
-  // t is used to iterate over columns of A (A is iterated top to bottom one (sizeof(__m128i)) at a time))
-  for (size_t j = 0; j < colsB; j += 4) {
+  // t is used to iterate over columns of A (A is left to right (sizeof(__m128i)) at a time))
+  for (size_t j = 0; j < colsB; j += numregs) { // 16/4=4
     // Loop breadth first of B, depth first of C. We write C one column (sizeof(__m128i)) at a time
-    //const __m128i * breord_cur = breord + j; // tiles always come in 4 columns
-    for (size_t i = 0; i < rowsA; i += 4) {
+    for (size_t i = 0; i < rowsA; i += numregs) { // 16/4=4
       const __m128i *  breord_cur = breord;
-      for (size_t t = 0; t < width; t += 16) {
+      for (size_t t = 0; t < width; t += regwidth) { // Loop over the width so we only ever write to a set of 4 consecutive registers
         // Loop over rows of A, going to use the same tile of B
         const __m128i * amat0 = reinterpret_cast<const __m128i *>(A + i*width + t);
         const __m128i * amat1 = reinterpret_cast<const __m128i *>(A + (i+1)*width + t);
@@ -263,11 +272,10 @@ void gemmDepthFirst(const uint8_t * A, const int8_t * B, int32_t * C, size_t row
         __m128i * cres3 = reinterpret_cast<__m128i *>(C + (i+3)*colsB + j);
         multiplyTileEff(amat0, amat1, amat2, amat3, breord_cur, 
                         cres0, cres1, cres2, cres3);
-        breord_cur = breord_cur + 4;
-        //breord = breord + 4;
+        breord_cur = breord_cur + numregs; // 16/4=4
       }
     }
-    breord = breord + width/4; // Our B reordered matrix goes over the colums first and rows later
+    breord = breord + width/numregs; // Our B reordered matrix goes over the colums first and rows later. Divided by 4 since we use 4 registers
   }
 }
 } // namespace bftile
