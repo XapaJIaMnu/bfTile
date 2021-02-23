@@ -65,4 +65,10 @@ void gemmRowMColM(intType1 *A, intType2 * B, size_t rowsA, size_t width, size_t 
     }
   }
 }
+
+struct matrix {
+  size_t aRows;
+  size_t width;
+  size_t bCols;
+};
 } // namespace bftile
