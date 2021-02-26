@@ -295,8 +295,7 @@ double intgemmBenchmark(bftile::matrix dims) {
 
   // Prepare datapoints
   auto start = std::chrono::steady_clock::now();
-  intgemm::Int8Shift::Multiply<intgemm::callbacks::Write<float>>(reinterpret_cast<const int8_t *>(A.begin()), B.begin(), aRows, width, bCols, intgemm::callbacks::Write<float>(reinterpret_cast<float *>(Cfast.begin())));
-  //gemmNS::gemm::gemm(A.begin(), BReord.begin(), Cfast.begin(), aRows, width, bCols);
+  intgemm::AVX512VNNI::Kernels8::Multiply8Shift<intgemm::callbacks::Write<int32_t>>(A.begin(), B.begin(), aRows, width, bCols, intgemm::callbacks::Write<int32_t>(Cfast.begin()));
   auto end = std::chrono::steady_clock::now();
 
   doNotOptimizeAway(Cfast.begin());
