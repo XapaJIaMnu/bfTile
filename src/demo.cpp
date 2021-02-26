@@ -5,6 +5,7 @@
 #include "mm512.h"
 #include "utils.h"
 #include "do_not_optimize.h"
+#include "intgemm.h"
 
 
 /************************************************************************************ Test code ************************************************************************************/
@@ -271,6 +272,38 @@ double gemmBenchmark(bftile::matrix dims) {
   return elapsed_seconds.count();
 }
 
+double intgemmBenchmark(bftile::matrix dims) {
+  using namespace bftile;
+  size_t aRows = dims.aRows;
+  size_t width = dims.width;
+  size_t bCols = dims.bCols;
+
+  AlignedVector<uint8_t> A(aRows*width);
+  AlignedVector<int8_t> B(width*bCols);
+  AlignedVector<int8_t> BReord(width*bCols);
+  AlignedVector<int32_t> Cfast(aRows*bCols);
+
+  for (size_t i = 0; i < aRows*width; i++) {
+    A[i] = i % 255;
+  }
+  for (size_t i = 0; i < width*bCols; i++) {
+    B[i] = i % 255;
+  }
+  for (auto&& item : Cfast) {
+    item = 0;
+  }
+
+  // Prepare datapoints
+  auto start = std::chrono::steady_clock::now();
+  intgemm::Int8Shift::Multiply<intgemm::callbacks::Write<float>>(reinterpret_cast<const int8_t *>(A.begin()), B.begin(), aRows, width, bCols, intgemm::callbacks::Write<float>(reinterpret_cast<float *>(Cfast.begin())));
+  //gemmNS::gemm::gemm(A.begin(), BReord.begin(), Cfast.begin(), aRows, width, bCols);
+  auto end = std::chrono::steady_clock::now();
+
+  doNotOptimizeAway(Cfast.begin());
+  std::chrono::duration<double> elapsed_seconds = end-start;
+  return elapsed_seconds.count();
+}
+
 void benchmark(size_t times=100) {
   double time_rows = 0;
   double time_width = 0;
@@ -280,6 +313,7 @@ void benchmark(size_t times=100) {
   double time_width_addr_loop_tile_loop_write_dep = 0;
   double time_width_addr_loop_tile_loop_write_dep_mm256 = 0;
   double time_width_addr_loop_tile_loop_write_dep_mm512 = 0;
+  double time_intgemm_vnni = 0;
   bftile::matrix matrices[11] = {{16, 64, 16},
                                  {16, 256, 256},
                                  {16, 2048, 256},
@@ -301,6 +335,7 @@ void benchmark(size_t times=100) {
       time_width_addr_loop_tile_loop_write_dep += gemmBenchmark<bftile::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
       time_width_addr_loop_tile_loop_write_dep_mm256 += gemmBenchmark<bftile::mm256::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
       time_width_addr_loop_tile_loop_write_dep_mm512 += gemmBenchmark<bftile::mm512::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
+      time_intgemm_vnni += intgemmBenchmark(matrix);
     }
   }
   std::cerr << "mm128 Iteration over rows-of-a took: " << time_rows << " seconds." << std::endl;
@@ -310,7 +345,8 @@ void benchmark(size_t times=100) {
   std::cerr << "mm128 Iteration over width with addresses assigned via for loop, for loop tile took: " << time_width_addr_loop_tile_loop << " seconds." << std::endl;
   std::cerr << "mm128 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep << " seconds." << std::endl;
   std::cerr << "mm256 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep_mm256 << " seconds." << std::endl;
-  std::cerr << "mm256 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep_mm512 << " seconds." << std::endl;
+  std::cerr << "mm512 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep_mm512 << " seconds." << std::endl;
+  std::cerr << "mm512 vnni intgemm took: " << time_intgemm_vnni << " seconds." << std::endl;
 }
 
 int main() {

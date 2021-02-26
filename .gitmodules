@@ -1,0 +1,3 @@
+[submodule "3rd_party/intgemm"]
+	path = 3rd_party/intgemm
+	url = https://github.com/kpu/intgemm.git
