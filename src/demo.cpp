@@ -271,7 +271,7 @@ double gemmBenchmark(bftile::matrix dims) {
   return elapsed_seconds.count();
 }
 
-void benchmark128(size_t times=100) {
+void benchmark(size_t times=100) {
   double time_rows = 0;
   double time_width = 0;
   double time_width_addr = 0;
@@ -375,5 +375,5 @@ int main() {
   for (auto&& matrix : matricesmm512) {
     GEMMTest<bftile::mm512::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
   }
-  benchmark128(10);
+  benchmark(10);
 }
