@@ -4,6 +4,7 @@
 #include "mm256.h"
 #include "mm512.h"
 #include "utils.h"
+#include "do_not_optimize.h"
 
 
 /************************************************************************************ Test code ************************************************************************************/
@@ -69,6 +70,7 @@ bool mm128Example(bool toprint=false) {
 
 bool mm256Example(bool toprint=false) {
   using namespace bftile;
+  using namespace bftile::mm256;
   // Let's get some _mm example going
   __m256i * amat = reinterpret_cast<__m256i*>(aligned_alloc(32*8*sizeof(int8_t), 1024));
   __m256i * bmat = reinterpret_cast<__m256i*>(aligned_alloc(32*8*sizeof(int8_t), 1024));
@@ -122,6 +124,7 @@ bool mm256Example(bool toprint=false) {
 
 bool mm512Example(bool toprint=false) {
   using namespace bftile;
+  using namespace bftile::mm512;
   // Let's get some _mm example going
   __m512i * amat = reinterpret_cast<__m512i*>(aligned_alloc(64*16*sizeof(int8_t), 1024));
   __m512i * bmat = reinterpret_cast<__m512i*>(aligned_alloc(64*16*sizeof(int8_t), 1024));
@@ -174,7 +177,7 @@ bool mm512Example(bool toprint=false) {
 }
 
 template<class gemmNS>
-double mm128GEMMTest(bftile::matrix dims, bool toprint=false) {
+double GEMMTest(bftile::matrix dims, bool toprint=false) {
   using namespace bftile;
   size_t aRows = dims.aRows;
   size_t width = dims.width;
@@ -263,6 +266,7 @@ double gemmBenchmark(bftile::matrix dims) {
   gemmNS::gemm::gemm(A.begin(), BReord.begin(), Cfast.begin(), aRows, width, bCols);
   auto end = std::chrono::steady_clock::now();
 
+  doNotOptimizeAway(Cfast.begin());
   std::chrono::duration<double> elapsed_seconds = end-start;
   return elapsed_seconds.count();
 }
@@ -273,13 +277,16 @@ void benchmark128(size_t times=100) {
   double time_width_addr = 0;
   double time_width_addr_loop = 0;
   double time_width_addr_loop_tile_loop = 0;
-  bftile::matrix matrices[11] = {{8, 64, 8},
-                                 {8, 256, 256},
-                                 {8, 2048, 256},
+  double time_width_addr_loop_tile_loop_write_dep = 0;
+  double time_width_addr_loop_tile_loop_write_dep_mm256 = 0;
+  double time_width_addr_loop_tile_loop_write_dep_mm512 = 0;
+  bftile::matrix matrices[11] = {{16, 64, 16},
+                                 {16, 256, 256},
+                                 {16, 2048, 256},
                                  {320, 256, 256},
-                                 {472, 256, 256},
-                                 {248, 256, 256},
-                                 {200, 256, 256},
+                                 {480, 256, 256},
+                                 {240, 256, 256},
+                                 {208, 256, 256},
                                  {256, 256, 256},
                                  {1024, 1024, 1024},
                                  {4096, 4096, 128},
@@ -291,20 +298,26 @@ void benchmark128(size_t times=100) {
       time_width_addr += gemmBenchmark<bftile::depthfirstaddr::runner>(matrix);
       time_width_addr_loop += gemmBenchmark<bftile::depthfirstaddrloop::runner>(matrix);
       time_width_addr_loop_tile_loop += gemmBenchmark<bftile::depthfirstaddrlooptileloop::runner>(matrix);
+      time_width_addr_loop_tile_loop_write_dep += gemmBenchmark<bftile::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
+      time_width_addr_loop_tile_loop_write_dep_mm256 += gemmBenchmark<bftile::mm256::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
+      time_width_addr_loop_tile_loop_write_dep_mm512 += gemmBenchmark<bftile::mm512::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
     }
   }
-  std::cerr << "Iteration over rows-of-a took: " << time_rows << " seconds." << std::endl;
-  std::cerr << "Iteration over width took: " << time_width << " seconds." << std::endl;
-  std::cerr << "Iteration over width with addresses took: " << time_width_addr << " seconds." << std::endl;
-  std::cerr << "Iteration over width with addresses assigned via for loop took: " << time_width_addr_loop << " seconds." << std::endl;
-  std::cerr << "Iteration over width with addresses assigned via for loop, for loop tile took: " << time_width_addr_loop_tile_loop << " seconds." << std::endl;
+  std::cerr << "mm128 Iteration over rows-of-a took: " << time_rows << " seconds." << std::endl;
+  std::cerr << "mm128 Iteration over width took: " << time_width << " seconds." << std::endl;
+  std::cerr << "mm128 Iteration over width with addresses took: " << time_width_addr << " seconds." << std::endl;
+  std::cerr << "mm128 Iteration over width with addresses assigned via for loop took: " << time_width_addr_loop << " seconds." << std::endl;
+  std::cerr << "mm128 Iteration over width with addresses assigned via for loop, for loop tile took: " << time_width_addr_loop_tile_loop << " seconds." << std::endl;
+  std::cerr << "mm128 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep << " seconds." << std::endl;
+  std::cerr << "mm256 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep_mm256 << " seconds." << std::endl;
+  std::cerr << "mm256 Iteration over width with addresses assigned via for loop, for loop tile with write dependencies took: " << time_width_addr_loop_tile_loop_write_dep_mm512 << " seconds." << std::endl;
 }
 
 int main() {
   mm128Example();
   mm256Example();
   mm512Example();
-  bftile::matrix matrices[14] = {{4, 16, 4},
+  bftile::matrix matricesmm128[14] = {{4, 16, 4},
                                  {4, 32, 4},
                                  {8, 32, 4},
                                  {64, 32, 8},
@@ -318,12 +331,49 @@ int main() {
                                  {256, 256, 4},
                                  {72, 320, 144},
                                  {4, 256, 512}};
-  for (auto&& matrix : matrices) {
-    mm128GEMMTest<bftile::breadthfirst::runner>(matrix);
-    mm128GEMMTest<bftile::depthfirst::runner>(matrix);
-    mm128GEMMTest<bftile::depthfirstaddr::runner>(matrix);
-    mm128GEMMTest<bftile::depthfirstaddrloop::runner>(matrix);
-    mm128GEMMTest<bftile::depthfirstaddrlooptileloop::runner>(matrix);
+  for (auto&& matrix : matricesmm128) {
+    GEMMTest<bftile::breadthfirst::runner>(matrix);
+    GEMMTest<bftile::depthfirst::runner>(matrix);
+    GEMMTest<bftile::depthfirstaddr::runner>(matrix);
+    GEMMTest<bftile::depthfirstaddrloop::runner>(matrix);
+    GEMMTest<bftile::depthfirstaddrlooptileloop::runner>(matrix);
+    GEMMTest<bftile::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
+  }
+
+  bftile::matrix matricesmm256[14] = {{8, 32, 8},
+                                 {8, 64, 8},
+                                 {16, 32, 8},
+                                 {8, 32, 16},
+                                 {16, 64, 16},
+                                 {16, 64, 64},
+                                 {8, 32, 40},
+                                 {640, 32, 32},
+                                 {16, 96, 48},
+                                 {640, 320, 32},
+                                 {640, 320, 320},
+                                 {256, 256, 8},
+                                 {72, 320, 144},
+                                 {40, 512, 512}};
+  for (auto&& matrix : matricesmm256) {
+    GEMMTest<bftile::mm256::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
+  }
+
+  bftile::matrix matricesmm512[14] = {{16, 64, 16},
+                                 {16, 128, 16},
+                                 {32, 64, 16},
+                                 {16, 64, 32},
+                                 {32, 128, 32},
+                                 {32, 128, 128},
+                                 {16, 64, 80},
+                                 {640, 64, 64},
+                                 {16, 192, 48},
+                                 {640, 320, 32},
+                                 {640, 320, 320},
+                                 {256, 256, 96},
+                                 {64, 320, 144},
+                                 {48, 512, 512}};
+  for (auto&& matrix : matricesmm512) {
+    GEMMTest<bftile::mm512::depthfirstaddrlooptileloopwritedepend::runner>(matrix);
   }
   benchmark128(10);
 }
